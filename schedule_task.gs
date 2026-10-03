@@ -27,10 +27,11 @@ function main() {
   const year = today.getFullYear();
   const month = today.getMonth(); // 0 = Jan, 11 = Dec
 
+  const taskListId = "@default";
+
   // --- LOGIC: CHECK RUN MODE ---
   let isSetupMode = (run_mode === "SETUP");
 
-  // If in AUTO mode, strictly enforce the "1st of the month" rule
   if (!isSetupMode) {
     if (today.getDate() !== 1) {
       console.log("Mode is AUTO and today is not the 1st. Skipping execution.");
@@ -75,7 +76,11 @@ function main() {
       monthly: ["$8 rideshare"],
       quarterly: [],
       semiAnnual: [],
-      annual: ["$150 Renowned Hotels", "Avis/B $40 cars.united.com 1/2", "Avis/B $40 cars.united.com 2/2"]
+      annual: [
+        "$150 Renowned Hotels",
+        "Avis/B $40 cars.united.com 1/2",
+        "Avis/B $40 cars.united.com 2/2"
+      ]
     },
     {
       name: "Chase Ritz",
@@ -102,71 +107,198 @@ function main() {
   }
 
   // --- DATE CALCULATORS ---
-  // We use '12' (Noon) to prevent timezone shifts making it the previous day
-
-  // End of Month
   const endOfMonth = new Date(year, month + 1, 0, 12);
 
-  // End of Quarter (Finds the last month of the current 3-month block)
   const quarterEndMonth = (Math.floor(month / 3) * 3) + 3;
   const endOfQuarter = new Date(year, quarterEndMonth, 0, 12);
 
-  // End of Semi-Annual (June or Dec)
   const semiEndMonth = (month < 6) ? 6 : 12;
   const endOfSemi = new Date(year, semiEndMonth, 0, 12);
 
-  // End of Year
   const endOfYear = new Date(year, 12, 0, 12);
 
+  // --- TITLE PREFIXES ---
+  const monthPrefix =
+    today.toLocaleString("default", { month: "long" }) + "-";
+
+  const quarterPrefix =
+    "Q" + (Math.floor(month / 3) + 1);
+
+  const semiPrefix =
+    (month < 6) ? "H1" : "H2";
+
+  const yearPrefix =
+    year.toString();
+
+  // ==========================================================
+  // IDEMPOTENCY:
+  // Read existing tasks ONCE and build a Set of title + due date.
+  // ==========================================================
+  const existingTaskKeys = getExistingTaskKeys(taskListId);
 
   // --- EXECUTION LOOP ---
-
-  const monthPrefix = today.toLocaleString('default', { month: 'long' }) + "-"; // "July-"
-  const quarterPrefix = "Q" + (Math.floor(month / 3) + 1);                      // "Q3"
-  const semiPrefix = (month < 6) ? "H1" : "H2";                                 // "H2"
-  const yearPrefix = year.toString();                                           // "2025"
-
-  activeCards.forEach(function (card) {
+  activeCards.forEach(function(card) {
     console.log(`Processing ${card.name}...`);
 
-    addTaskBatch(card.monthly, today, endOfMonth, card.name, monthPrefix);
+    addTaskBatch(
+      card.monthly,
+      today,
+      endOfMonth,
+      card.name,
+      monthPrefix,
+      taskListId,
+      existingTaskKeys
+    );
 
     if (isSetupMode || month % 3 === 0) {
-      addTaskBatch(card.quarterly, today, endOfQuarter, card.name, quarterPrefix);
+      addTaskBatch(
+        card.quarterly,
+        today,
+        endOfQuarter,
+        card.name,
+        quarterPrefix,
+        taskListId,
+        existingTaskKeys
+      );
     }
 
     if (isSetupMode || month % 6 === 0) {
-      addTaskBatch(card.semiAnnual, today, endOfSemi, card.name, semiPrefix);
+      addTaskBatch(
+        card.semiAnnual,
+        today,
+        endOfSemi,
+        card.name,
+        semiPrefix,
+        taskListId,
+        existingTaskKeys
+      );
     }
 
     if (isSetupMode || month === 0) {
-      addTaskBatch(card.annual, today, endOfYear, card.name, yearPrefix);
+      addTaskBatch(
+        card.annual,
+        today,
+        endOfYear,
+        card.name,
+        yearPrefix,
+        taskListId,
+        existingTaskKeys
+      );
     }
   });
 }
 
-// --- HELPER FUNCTION ---
-function addTaskBatch(taskList, startDate, deadlineDate, cardName, timePrefix) {
+
+// ==========================================================
+// ADD TASKS
+// ==========================================================
+function addTaskBatch(
+  taskList,
+  startDate,
+  deadlineDate,
+  cardName,
+  timePrefix,
+  taskListId,
+  existingTaskKeys
+) {
   if (!taskList || taskList.length === 0) return;
 
   const startStr = startDate.toLocaleDateString();
   const endStr = deadlineDate.toLocaleDateString();
 
-  taskList.forEach(function (item) {
+  taskList.forEach(function(item) {
     const taskTitle = `${timePrefix} ${cardName}: ${item}`;
 
     const taskPayload = {
       title: taskTitle,
       notes: `Period: ${startStr} - ${endStr}`,
       due: startDate.toISOString(),
-      // deadline: endDate.toISOString(),
     };
 
+    const key = makeTaskKey(taskTitle, startDate);
+
+    // Already exists -> skip
+    if (existingTaskKeys.has(key)) {
+      console.log(`  > Already exists, skipping: ${taskTitle}`);
+      return;
+    }
+
     try {
-      Tasks.Tasks.insert(taskPayload, '@default');
+      Tasks.Tasks.insert(taskPayload, taskListId);
+
+      // Important:
+      // Update the in-memory set immediately so even duplicate entries
+      // during THIS execution cannot be inserted twice.
+      existingTaskKeys.add(key);
+
       console.log(`  > Added: ${taskTitle} (Deadline: ${endStr})`);
     } catch (e) {
-      console.log(`  > Error: ${e.message} `);
+      console.log(`  > Error: ${e.message}`);
     }
   });
+}
+
+
+// ==========================================================
+// LOAD EXISTING TASKS
+// ==========================================================
+function getExistingTaskKeys(taskListId) {
+  const keys = new Set();
+
+  let pageToken;
+
+  do {
+    const options = {
+      maxResults: 100,
+      showCompleted: true,
+      showHidden: true,
+    };
+
+    if (pageToken) {
+      options.pageToken = pageToken;
+    }
+
+    const response = Tasks.Tasks.list(taskListId, options);
+
+    const tasks = response.items || [];
+
+    tasks.forEach(function(task) {
+      if (!task.title || !task.due) return;
+
+      keys.add(makeTaskKey(task.title, task.due));
+    });
+
+    pageToken = response.nextPageToken;
+
+  } while (pageToken);
+
+  console.log(`Loaded ${keys.size} existing task keys.`);
+
+  return keys;
+}
+
+
+// ==========================================================
+// CREATE STABLE DUPLICATE-DETECTION KEY
+//
+// Example:
+// "October- Amex Platinum: $15 Uber Cash|2026-10-01"
+// ==========================================================
+function makeTaskKey(title, date) {
+  return `${title}|${getDateKey(date)}`;
+}
+
+
+// Return only YYYY-MM-DD.
+//
+// Works with:
+//   Date object
+//   "2026-10-01T07:00:00.000Z"
+// ==========================================================
+function getDateKey(date) {
+  if (date instanceof Date) {
+    return date.toISOString().substring(0, 10);
+  }
+
+  return String(date).substring(0, 10);
 }
