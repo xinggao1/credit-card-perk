@@ -19,6 +19,7 @@ const my_cards = [
   { name: "Chase SapphireP", anniversaryMonth: null },
   { name: "Chase Ritz",      anniversaryMonth: null },
   { name: "Chase Ihg",       anniversaryMonth: null },
+  { name: "Amex deltaP",     anniversaryMonth: null },
 ];
 
 // 2. How are you running this?
@@ -83,7 +84,9 @@ function main() {
       quarterly: ["$50 Flight"],
       semiAnnual: ["$200 Hilton Resort"],
       annual: [],
-      anniversary: []
+      anniversary: [
+        "Hilton Free Night Reward"
+      ]
     },
     {
       name: "Amex deltaP",
@@ -91,27 +94,31 @@ function main() {
       quarterly: [],
       semiAnnual: [],
       annual: ["$150 prepaid delta stays"],
-      anniversary: []
+      anniversary: [
+        "Delta Companion Certificate"
+      ]
     },
     {
       name: "Chase SapphireP",
       monthly: [],
       quarterly: [],
       semiAnnual: [],
-      annual: ["$50 Hotel (Chase Travel)"],
-      anniversary: []
+      annual: [],
+      anniversary: [
+        "$100 Hotel (Chase Travel)"
+      ]
     },
     {
       name: "Chase Quest",
       monthly: ["$8 rideshare"],
       quarterly: [],
       semiAnnual: [],
-      annual: [
+      annual: [],
+      anniversary: [
+        "$200 United TravelBank",
+        "10K award flight discount",
         "$150 Renowned Hotels",
-        "Avis/B $40 cars.united.com 1/2",
-        "Avis/B $40 cars.united.com 2/2"
-      ],
-      anniversary: []
+      ]
     },
     {
       name: "Chase Ritz",
@@ -119,7 +126,9 @@ function main() {
       quarterly: [],
       semiAnnual: [],
       annual: ["$300 airline incidental"],
-      anniversary: []
+      anniversary: [
+        "85K Marriott Free Night Award"
+      ]
     },
     {
       name: "Chase Ihg",
@@ -127,7 +136,9 @@ function main() {
       quarterly: ["$25 hotel dining"],
       semiAnnual: ["$25 travelbank (auto expire)"],
       annual: ["$100 for $250 airfare"],
-      anniversary: []
+      anniversary: [
+        "50K IHG Free Night"
+      ]
     }
   ];
 
