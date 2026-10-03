@@ -3,20 +3,30 @@
 // ==========================================
 
 // 1. Which cards do you own? (Must match names in the database below exactly)
+//
+// anniversaryMonth:
+//   1 = January
+//   2 = February
+//   ...
+//   12 = December
+//
+// null = skip anniversary tracking for this card
 const my_cards = [
-  "Amex Platinum",
-  "Amex Gold",
-  "Amex Aspire",
-  "Chase Quest",
-  "Chase SapphireP",
-  "Chase Ritz",
-  "Chase Ihg",
+  { name: "Amex Platinum",   anniversaryMonth: null },
+  { name: "Amex Gold",       anniversaryMonth: null },
+  { name: "Amex Aspire",     anniversaryMonth: null },
+  { name: "Chase Quest",     anniversaryMonth: null },
+  { name: "Chase SapphireP", anniversaryMonth: null },
+  { name: "Chase Ritz",      anniversaryMonth: null },
+  { name: "Chase Ihg",       anniversaryMonth: null },
 ];
 
 // 2. How are you running this?
 // "SETUP" = Adds ALL active tasks for the current year/quarter/month immediately.
+//           Also adds the most recent anniversary perk within the last 12 months.
 // "AUTO"  = The normal monthly scheduler (Only runs on 1st of month).
-const run_mode = "AUTO";
+//           Anniversary perks only trigger in their configured anniversary month.
+const run_mode = "SETUP";
 
 // ==========================================
 //      END OF USER SETTINGS
@@ -56,28 +66,40 @@ function main() {
       monthly: ["$15 Uber Cash"],
       quarterly: ["$100 Resy", "$75 Lululemon"],
       semiAnnual: ["$50 Saks", "$300 FHR"],
-      annual: ["$200 Airline Fee", "$200 Oura Ring", "$120 Uber One"]
+      annual: ["$200 Airline Fee", "$200 Oura Ring", "$120 Uber One"],
+      anniversary: []
     },
     {
       name: "Amex Gold",
       monthly: ["$10 Dining", "$10 Uber", "$7 Dunkin"],
       quarterly: [],
       semiAnnual: ["$50 Resy"],
-      annual: []
+      annual: [],
+      anniversary: []
     },
     {
       name: "Amex Aspire",
       monthly: [],
       quarterly: ["$50 Flight"],
       semiAnnual: ["$200 Hilton Resort"],
-      annual: []
+      annual: [],
+      anniversary: []
+    },
+    {
+      name: "Amex deltaP",
+      monthly: ["$10 Resy", "$10 rideshare"],
+      quarterly: [],
+      semiAnnual: [],
+      annual: ["$150 prepaid delta stays"],
+      anniversary: []
     },
     {
       name: "Chase SapphireP",
       monthly: [],
       quarterly: [],
       semiAnnual: [],
-      annual: ["$50 Hotel (Chase Travel)"]
+      annual: ["$50 Hotel (Chase Travel)"],
+      anniversary: []
     },
     {
       name: "Chase Quest",
@@ -88,21 +110,24 @@ function main() {
         "$150 Renowned Hotels",
         "Avis/B $40 cars.united.com 1/2",
         "Avis/B $40 cars.united.com 2/2"
-      ]
+      ],
+      anniversary: []
     },
     {
       name: "Chase Ritz",
       monthly: [],
       quarterly: [],
       semiAnnual: [],
-      annual: ["$300 airline incidental"]
+      annual: ["$300 airline incidental"],
+      anniversary: []
     },
     {
       name: "Chase Ihg",
       monthly: [],
-      quarterly: [],
+      quarterly: ["$25 hotel dining"],
       semiAnnual: ["$25 travelbank (auto expire)"],
-      annual: []
+      annual: ["$100 for $250 airfare"],
+      anniversary: []
     }
   ];
 
@@ -110,10 +135,31 @@ function main() {
   // ==========================================
   //      FILTER: SELECT USER CARDS
   // ==========================================
+  //
+  // Combine the benefit database with each
+  // card's user-specific anniversary month.
+  //
 
-  const activeCards = allCards.filter(
-    card => my_cards.includes(card.name)
-  );
+  const activeCards = my_cards
+    .map(function(ownedCard) {
+      const card = allCards.find(
+        card => card.name === ownedCard.name
+      );
+
+      if (!card) {
+        console.log(
+          `Card not found in database: ${ownedCard.name}`
+        );
+        return null;
+      }
+
+      return {
+        ...card,
+        anniversaryMonth: ownedCard.anniversaryMonth
+      };
+    })
+    .filter(Boolean);
+
 
   if (activeCards.length === 0) {
     console.log(
@@ -361,6 +407,112 @@ function main() {
         taskListId,
         existingTaskKeys
       );
+    }
+
+
+    // ------------------------------------------
+    // Anniversary
+    //
+    // AUTO:
+    // Only during this card's anniversary month.
+    //
+    // SETUP:
+    // Add the most recent anniversary occurrence
+    // within the last 12 months.
+    //
+    // If anniversaryMonth is null, skip.
+    // ------------------------------------------
+
+    if (
+      card.anniversaryMonth !== null &&
+      card.anniversaryMonth !== undefined
+    ) {
+
+      // Validate anniversary month: 1-12
+      if (
+        !Number.isInteger(card.anniversaryMonth) ||
+        card.anniversaryMonth < 1 ||
+        card.anniversaryMonth > 12
+      ) {
+
+        console.log(
+          `  > Invalid anniversaryMonth for ${card.name}: ${card.anniversaryMonth}`
+        );
+
+      } else if (isSetupMode) {
+
+        // Find the most recent occurrence of this
+        // anniversary month within the last 12 months.
+        //
+        // Example if today is Oct 2026:
+        //
+        // anniversaryMonth = 7  -> Jul 2026
+        // anniversaryMonth = 10 -> Oct 2026
+        // anniversaryMonth = 11 -> Nov 2025
+
+        let anniversaryYear = year;
+
+        if (card.anniversaryMonth > month + 1) {
+          anniversaryYear--;
+        }
+
+        const anniversaryMonthIndex =
+          card.anniversaryMonth - 1;
+
+        const startOfAnniversary = new Date(
+          anniversaryYear,
+          anniversaryMonthIndex,
+          1,
+          12
+        );
+
+        const endOfAnniversary = new Date(
+          anniversaryYear,
+          anniversaryMonthIndex + 1,
+          0,
+          12
+        );
+
+        addTaskBatch(
+          card.anniversary,
+
+          // SETUP backfills onto the actual
+          // anniversary month.
+          startOfAnniversary,
+
+          // Stable period identity.
+          startOfAnniversary,
+          endOfAnniversary,
+
+          card.name,
+          "Anniversary",
+
+          taskListId,
+          existingTaskKeys
+        );
+
+      } else if (
+        card.anniversaryMonth === month + 1
+      ) {
+
+        // AUTO:
+        // Only create the perk when this month
+        // matches the configured anniversary month.
+
+        addTaskBatch(
+          card.anniversary,
+
+          today,
+          startOfMonth,
+          endOfMonth,
+
+          card.name,
+          "Anniversary",
+
+          taskListId,
+          existingTaskKeys
+        );
+      }
     }
 
   });
